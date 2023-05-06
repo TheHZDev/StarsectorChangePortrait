@@ -21,7 +21,7 @@ hasInitedModIDs: List[str] = []  # 已经进行了初始化加载的mod
 
 def openXMLFile(xmlPath: str) -> lxml.etree._ElementTree:
     """打开一个XML存档文件，并使用lxml来解析它"""
-    return lxml.etree.parse(xmlPath, lxml.etree.XMLParser('UTF-8'))
+    return lxml.etree.parse(xmlPath, lxml.etree.XMLParser(encoding='UTF-8'))
 
 
 class saveFileUnit:
@@ -51,18 +51,28 @@ class saveFileUnit:
         self.__modsInfo: Dict[str, Dict[str, str]] = {}
         for unit in tFile.xpath(
                 '/SaveGameData/allModsEverEnabled//com.fs.starfarer.campaign.ModAndPluginData_-EnabledModData/spec'):
-            # assert isinstance(unit, lxml.etree._Element)
-            modPath: str = unit.xpath('path')[0].text
-            if not os.path.isdir(modPath):
-                continue
-            self.__modsInfo[unit.xpath('id')[0].text] = {
-                'id': unit.xpath('id')[0].text,
-                'path': modPath.strip().replace(r'\starsector-core\..', ''),  # Mod的工作路径
-                'name': unit.xpath('name')[0].text,  # 名称
-                'description': unit.xpath('desc')[0].text,  # 描述
-                'version': unit.xpath('versionInfo/string')[0].text,  # 版本号
-                'author': unit.xpath('author')[0].text,  # 作者
-            }
+            try:  # 这里调试出的bug有一箩筐，还是try一下比较保险
+                modPath: str = unit.xpath('path')[0].text
+                if not os.path.isdir(modPath):
+                    continue
+                if len(unit.xpath('versionInfo/string')) == 0:
+                    versionStr = '1.0.0'
+                else:
+                    versionStr = unit.xpath('versionInfo/string')[0].text
+                if len(unit.xpath('author')) == 0:
+                    authorStr = 'Noname'
+                else:
+                    authorStr = unit.xpath('author')[0].text
+                self.__modsInfo[unit.xpath('id')[0].text] = {
+                    'id': unit.xpath('id')[0].text,
+                    'path': modPath.strip().replace(r'\starsector-core\..', ''),  # Mod的工作路径
+                    'name': unit.xpath('name')[0].text,  # 名称
+                    'description': unit.xpath('desc')[0].text,  # 描述
+                    'version': versionStr,  # 版本号
+                    'author': authorStr,  # 作者
+                }
+            except:
+                pass
         # const定义区
         self.__const_saveDelay = 10  # 单位为秒
         # 标志区
@@ -80,12 +90,18 @@ class saveFileUnit:
     def GetModInfoByID(self, modID: str):
         return self.__modsInfo.get(modID, {})
 
-    def LoadModIntoCache(self):
+    def LoadModIntoCache(self, func_showProgress = None):
         """将该存档的mod内容载入缓存"""
         if self.__flag_hasLoadedMod:
             return
         for unitKey in self.__modsInfo:
             if unitKey not in hasInitedModIDs:
+                if callable(func_showProgress) and 'name' in self.__modsInfo[unitKey]:
+                    try:
+                        modName = self.__modsInfo[unitKey]['name']
+                        func_showProgress(f'正在加载 {modName} 的mod信息，请稍等……')
+                    except:
+                        pass
                 tVar = portraitModUnit(**self.__modsInfo[unitKey])
                 hasInitedModIDs.append(unitKey)
                 if tVar.HasPortraits:  # 只载入有头像的mod
@@ -139,6 +155,15 @@ class saveFileUnit:
             self.__func_toSyncPerson.clear()
         self.__event_endAllSync.set()
 
+    def GetAIAdminData(self):
+        return self.__AIAdmin_persons.copy()
+
+    def GetNexAgentData(self):
+        return self.__NexAgent_persons.copy()
+
+    def GetPortraitsModIDs(self):
+        return self.__cache_hasPortraitsMod.copy()
+
     # 参数区
     @property
     def PortraitPath(self) -> str:
@@ -175,14 +200,10 @@ class saveFileUnit:
         """存档的保存日期"""
         return self.__descriptionInfo['saveDate']
 
-    @property
-    def ModInfoIDs(self):
-        return list(self.__modsInfo.keys())
-
 
 class saveFileManager:
 
-    def __init__(self, saveFolder: str):
+    def __init__(self, saveFolder: str, **kwargs):
         """
         存档文件总管理器，负责统筹管理。
 
@@ -190,16 +211,17 @@ class saveFileManager:
         """
         assert os.path.isdir(saveFolder), "不是一个有效的存档目录！"
         self.__saveFiles = []
+        self.__func_showProgressText = kwargs.get('func_showProgress')
         for dirPath, _, fileNames in os.walk(saveFolder):
             if const_descriptionName and const_campaignName in fileNames:
-                try:
-                    self.__saveFiles.append(saveFileUnit(dirPath))
-                    # 传入存档后会读取有效信息，读取失败就主动报错
-                except:
-                    pass
+                self.__saveFiles.append(saveFileUnit(dirPath))
         for unit in self.__saveFiles:
-            unit.LoadModIntoCache()
+            unit.LoadModIntoCache(self.__func_showProgressText)
         # 加载原版数据
+        try:
+            self.__func_showProgressText('正在载入 远行星号原版 的数据……')
+        except:
+            pass
         cache_PublicModPortraits['core'] = portraitModUnit(name='远行星号 原版', desc='原版头像库',
                                                            path=os.path.join(saveFolder, '..', 'starsector-core'))
 
@@ -215,3 +237,16 @@ class saveFileManager:
 
     def ListAllSaveInfo(self):
         return self.__saveFiles.copy()
+
+    def ListSaveInfoOrderBySaveDateDesc(self):
+        """按保存日期降序排序"""
+        tVar = [unit.SaveDate for unit in self.__saveFiles]
+        tVar.sort()
+        result = []
+        while len(tVar) > 0:
+            tUnit = tVar.pop()
+            for unit in self.__saveFiles:
+                if unit.SaveDate == tUnit:
+                    result.append(unit)
+                    break
+        return result

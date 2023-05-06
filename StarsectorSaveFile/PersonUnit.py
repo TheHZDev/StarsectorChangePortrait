@@ -28,6 +28,8 @@ class AIAdminPerson:
 
     def UpdateInfo(self):
         if self.__flag_needUpdate:
+            if self.__syncToXML in self.__delayFuncList:
+                self.__delayFuncList.remove(self.__syncToXML)
             self.__delayFuncList.append(self.__syncToXML)
 
     def __syncToXML(self):
@@ -50,7 +52,7 @@ class AIAdminPerson:
 
     @Name.setter
     def Name(self, value):
-        if isinstance(value, str):
+        if isinstance(value, str) and value != self.__name:
             if len(value) == 0:
                 value = ' '
             self.__name = value
@@ -58,7 +60,7 @@ class AIAdminPerson:
 
     @PortraitPath.setter
     def PortraitPath(self, value):
-        if isinstance(value, str):
+        if isinstance(value, str) and value != self.__portraitPath:
             self.__portraitPath = value
             self.__flag_needUpdate = True
 
@@ -89,6 +91,8 @@ class NexAgentPerson:
 
     def UpdateInfo(self):
         if self.__flag_needUpdate:
+            if self.__syncToXML in self.__delayFuncList:
+                self.__delayFuncList.remove(self.__syncToXML)
             self.__delayFuncList.append(self.__syncToXML)
 
     def __syncToXML(self):
@@ -124,7 +128,7 @@ class NexAgentPerson:
 
     @Name.setter
     def Name(self, value):
-        if isinstance(value, str):
+        if isinstance(value, str) and value != self.__name:
             if len(value) == 0:
                 value = ' '
             self.__name = value
@@ -132,13 +136,13 @@ class NexAgentPerson:
 
     @PortraitPath.setter
     def PortraitPath(self, value):
-        if isinstance(value, str):
+        if isinstance(value, str) and value != self.__portraitPath:
             self.__portraitPath = value
             self.__flag_needUpdate = True
 
     @Gender.setter
     def Gender(self, value):
-        if value in ('MALE', 'FEMALE'):
+        if value in ('MALE', 'FEMALE') and value != self.__gender:
             self.__gender = value
             self.__flag_needUpdate = True
 

@@ -32,7 +32,9 @@ class portraitModUnit:
                     if unit.name == 'player.faction':
                         # 录入玩家头像数据
                         self.__portraits_player_men = tContent.get('portraits', {}).get('standard_male', [])
+                        self.__portraits_player_men.sort()
                         self.__portraits_player_women = tContent.get('portraits', {}).get('standard_female', [])
+                        self.__portraits_player_women.sort()
             # 精简化数据存储
             self.__portraits_global_men = list(set(self.__portraits_global_men))
             self.__portraits_global_women = list(set(self.__portraits_global_women))
@@ -126,4 +128,7 @@ class portraitModUnit:
             for line in tVar.splitlines():
                 tList.append(line.strip().replace('#', '//'))
             result = '\r\n'.join(tList)
-        return json5.loads(result)
+        try:
+            return json5.loads(result)
+        except:
+            return {}

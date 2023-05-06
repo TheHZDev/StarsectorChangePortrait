@@ -1,12 +1,15 @@
 import os
 import sys
 from os.path import isdir, isfile
+from threading import Thread as QThread
+from typing import List
 
 from PyQt6 import QtCore, QtGui, QtWidgets
+
 from StarsectorSaveFile import *
 
 
-class Thread(QtCore.QThread):
+class Thread(QThread):
     endSignal = QtCore.pyqtBoundSignal()
 
     def __init__(self, target, *args, **kwargs):
@@ -18,6 +21,7 @@ class Thread(QtCore.QThread):
     def run(self):
         self.__toExecFunc(*self.__args, **self.__kwargs)
         self.endSignal.emit()
+
 
 class preDialog(QtWidgets.QDialog):
     def __init__(self, parent):
@@ -139,28 +143,53 @@ class preDialog(QtWidgets.QDialog):
         # 事件绑定操作
         self.__loadSaveButton.clicked['bool'].connect(lambda b: self.__loadSaveFile())
         self.__exitButton.clicked['bool'].connect(lambda b: exit(0))
-        self.__selectSaveFile.clicked['QModelIndex'].connect(lambda b: self.__flashInfo())
+        self.__selectSaveFile.currentRowChanged['int'].connect(lambda b: self.__flashInfo())
         # 具体事务操作
         self.__saveFileManager: saveFileManager = None
         self.__flag_init = False
-        initThread = Thread(self.__initData)
-        initThread.endSignal.connect(lambda: self.__callback_initDataOK())
-        initThread.start()
+        self.__cache_listItems: List[saveFileUnit] = []
+        self.__flag_exit = True
+        QThread(target=self.__initData).start()
 
     def __loadSaveFile(self):
-        pass
+        mainWin.OpenSaveFile(self.__cache_listItems[self.__selectSaveFile.currentRow()])
+        self.accept()
+        self.__flag_init = False
+        self.close()
+
+    def closeEvent(self, a0: QtGui.QCloseEvent):
+        a0.accept()
+        if self.__flag_exit:
+            exit(0)
 
     def __flashInfo(self):
-        pass
+        currentUnit = self.__cache_listItems[self.__selectSaveFile.currentRow()]
+        self.__showPlayerName.setText(currentUnit.CharacterName)
+        self.__showPlayerLevel.setText(str(currentUnit.CharacterLevel))
+        self.__showGameDifficulty.setText(currentUnit.Difficulty)
+        self.__showGameRunningDate.setText(
+            f"{currentUnit.GameRunningDate.year} 年 {currentUnit.GameRunningDate.month} 月 {currentUnit.GameRunningDate.day} 日")
+        self.__showGameSaveDate.setText(currentUnit.SaveDate.strftime("%Y-%m-%d %H:%M:%S"))
+        self.__showIsIronManMode.setText('是' if currentUnit.IsIronMode else '否')
+        # 显示头像
+        tVar = QtGui.QPixmap(currentUnit.GetPortraitAbsolutePath())
+        self.__showPlayerPortrait.setPixmap(tVar)
 
     def __initData(self):
         """用来初始化数据"""
-        self.__saveFileManager = saveFileManager(os.path.join(os.getcwd(), 'saves'))
+        self.__saveFileManager = saveFileManager(os.path.join(os.getcwd(), 'saves'),
+                                                 func_showProgress=self.setWindowTitle)
+        self.setWindowTitle('请选择要载入的存档')
         self.__flag_init = True
-
-    def __callback_initDataOK(self):
-        """数据初始化结束后用来绕过UI线程限制"""
-        pass
+        self.__loadSaveButton.setEnabled(True)
+        self.__cache_listItems = self.__saveFileManager.ListSaveInfoOrderBySaveDateDesc()
+        # 绘制列表
+        showList = []
+        for unit in self.__cache_listItems:
+            showList.append(
+                f"{unit.CharacterName}[等级：{unit.CharacterLevel}，难度：{unit.Difficulty}，游戏日期：{unit.GameRunningDate.year} 年{unit.GameRunningDate.month} 月{unit.GameRunningDate.day} 日]")
+        self.__selectSaveFile.addItems(showList)
+        self.__selectSaveFile.setCurrentRow(0)
 
 
 class starsectorSaveEditor(QtWidgets.QMainWindow):
@@ -183,12 +212,10 @@ class starsectorSaveEditor(QtWidgets.QMainWindow):
         label.setText("姓名（可修改）")
         self.__editAIAdminName = QtWidgets.QLineEdit(parent=groupBox)
         self.__editAIAdminName.setGeometry(QtCore.QRect(10, 70, 181, 31))
-        self.__editAIAdminName.setText("")
         self.__editAIAdminName.setMaxLength(12)
         self.__editAIAdminName.setAlignment(QtCore.Qt.AlignmentFlag.AlignCenter)
         self.__showAIAdminLocation = QtWidgets.QLineEdit(parent=groupBox)
         self.__showAIAdminLocation.setGeometry(QtCore.QRect(10, 180, 181, 31))
-        self.__showAIAdminLocation.setText("")
         self.__showAIAdminLocation.setMaxLength(12)
         self.__showAIAdminLocation.setAlignment(QtCore.Qt.AlignmentFlag.AlignCenter)
         self.__showAIAdminLocation.setReadOnly(True)
@@ -325,6 +352,144 @@ class starsectorSaveEditor(QtWidgets.QMainWindow):
         self.__saveAndExitButton.setText("保存存档并退出")
         self.setCentralWidget(centralwidget)
         QtCore.QMetaObject.connectSlotsByName(self)
+        # 事件绑定区
+        factionGroup.idClicked['int'].connect(lambda i: self.__factionSelection(i))
+        genderGroup.idClicked['int'].connect(lambda i: self.__genderSelection(i))
+        self.__randomSelectPortraitButton.clicked['bool'].connect(lambda b: self.__randomChoicePortrait())
+        self.__saveAndExitButton.clicked['bool'].connect(lambda b: self.__saveAndExit())
+        self.__selectAIAdmin.currentRowChanged['int'].connect(lambda i: self.__showPersonInfo())
+        self.__selectNexAgent.currentRowChanged['int'].connect(lambda i: self.__showPersonInfo())
+        self.__selectModList.currentRowChanged['int'].connect(lambda i: self.__flashModPortraits())
+        self.__selectPortraitInMod.currentRowChanged['int'].connect(lambda i: self.__showSelectPortrait())
+        self.__selectNexAgentGender.currentIndexChanged['int'].connect(lambda i: self.__updatePersonInfo('gender'))
+        self.__editNexAgentName.textEdited['QString'].connect(lambda s: self.__updatePersonInfo('name'))
+        self.__editAIAdminName.textEdited['QString'].connect(lambda s: self.__updatePersonInfo('name'))
+        # 变量储存区
+        self.__currentSaveFile: saveFileUnit = None
+        self.__genderID = 0
+        self.__factionID = 0
+        self.__cache_nameToIDs = {}
+        self.__cache_AIAdmins: List[AIAdminPerson] = []
+        self.__cache_NexAgents: List[NexAgentPerson] = []
+        self.__cache_currentPortraitMod: portraitModUnit = None
+        self.__cache_AllPortraitsIndex = []
+        self.__cache_AllPortraits_show = []
+        # 标志区
+        self.__flag_progressing = False # 临界区标志，作用是临时关闭对应事件的处理
+        self.__flag_reduceRadio = False
+
+    def __genderSelection(self, selectID: int):
+        if self.__flag_reduceRadio:
+            return
+        self.__genderID = selectID
+        self.__flashModPortraits()
+
+    def __factionSelection(self, selectID: int):
+        if self.__flag_reduceRadio:
+            return
+        self.__factionID = selectID
+        self.__flashModPortraits()
+
+    def __randomChoicePortrait(self):
+        pass
+
+    def __saveAndExit(self):
+        if self.__currentSaveFile is not None:
+            self.__currentSaveFile.CloseSaveFile()
+        self.close()
+        mainApp.exit(0)
+
+    def __flashModPortraits(self):
+        """设计用于用户选择mod名字后，填充mod的头像列表到可选部分，并设置第一位"""
+        currentRowStr = self.__selectModList.currentItem().text()
+        self.__selectPortraitInMod.clear()
+        if currentRowStr == '所有':
+            self.__selectPortraitInMod.addItems(self.__cache_AllPortraits_show)
+            self.SetFactionRadioGroupEnable(False)
+            self.SetGenderRadioGroupEnable(False)
+            self.__flag_reduceRadio = True
+            self.__radioFaction_all.setChecked(True)
+            self.__factionID = 1
+            self.__radioGender_all.setChecked(True)
+            self.__genderID = 2
+            self.__flag_reduceRadio = False
+        elif self.__cache_nameToIDs.get(currentRowStr) in cache_PublicModPortraits:
+            self.__cache_currentPortraitMod = cache_PublicModPortraits[self.__cache_nameToIDs.get(currentRowStr)]
+
+
+    def __showSelectPortrait(self):
+        """选择具体的头像名字后，显示出来，改动即时生效"""
+        if self.__selectModList.currentRow() != 0:
+            if self.__cache_currentPortraitMod is not None:
+                dataList = self.__easyGetListData(self.__cache_currentPortraitMod)
+                dataUnit = dataList[self.__selectPortraitInMod.currentRow()]
+                portraitPath = self.__cache_currentPortraitMod.PathJoin(dataUnit)
+                if self.__selectFunction.currentIndex() == 1:
+                    self.__showNexAgentPortrait.setPixmap(QtGui.QPixmap(portraitPath))
+                else:
+                    self.__showAIAdminPortrait.setPixmap(QtGui.QPixmap(portraitPath))
+
+    def __showPersonInfo(self):
+        pass
+
+    def __updatePersonInfo(self, toUpdate: str):
+        """
+        更新个人信息，通过使用currentIndex来区分。
+
+        :param toUpdate: 一些辅助信息（因为所有文本框都关联到同一个函数来了）
+        """
+        pass
+
+    def OpenSaveFile(self, newSaveFile: saveFileUnit):
+        """
+        打开一个指定的存档文件，这是前台与后台的协同。
+
+        :param newSaveFile: 待打开的存档文件。
+        """
+        self.__currentSaveFile = newSaveFile
+        newSaveFile.OpenSaveFile()
+        self.show()
+        self.__cache_AIAdmins = newSaveFile.GetAIAdminData()
+        self.__cache_NexAgents = newSaveFile.GetNexAgentData()
+        cache_modIDs = newSaveFile.GetPortraitsModIDs()
+        cache_modIDs.append('core')
+        offset = 0
+        # 填充Mod列表
+        for unit in cache_modIDs:
+            if unit in cache_PublicModPortraits:
+                self.__cache_nameToIDs[cache_PublicModPortraits[unit].Name] = unit
+                dataList = cache_PublicModPortraits[unit].ListGlobalPortraits(ignoreGender=True)
+                self.__cache_AllPortraitsIndex.append({'id': unit, 'offset': offset, 'data': dataList})
+                offset += len(dataList)
+                self.__cache_AllPortraits_show += dataList
+        # 产生适用于“所有”的特殊portrait列表
+        self.__selectModList.addItem('所有')  # 特殊选项，将会有特殊效果
+        self.__selectModList.addItems(list(self.__cache_nameToIDs.keys()))
+        self.__selectModList.setCurrentRow(0)
+
+    def SetGenderRadioGroupEnable(self, enable: bool = True):
+        self.__radioGender_all.setEnabled(enable)
+        self.__radioGender_man.setEnabled(enable)
+        self.__radioGender_woman.setEnabled(enable)
+
+    def SetFactionRadioGroupEnable(self, enable: bool = True):
+        self.__radioFaction_all.setEnabled(enable)
+        self.__radioFaction_player.setEnabled(enable)
+
+    def __easyGetListData(self, toGetUnit: portraitModUnit):
+        if self.__genderID == 2:
+            match self.__factionID:
+                case 0:
+                    return toGetUnit.ListPlayerFactionPortraits(ignoreGender=True)
+                case 1:
+                    return toGetUnit.ListGlobalPortraits(ignoreGender=True)
+        else:
+            match self.__factionID:
+                case 0:
+                    return toGetUnit.ListPlayerFactionPortraits(genderMan=True if self.__genderID == 0 else False)
+                case 1:
+                    return toGetUnit.ListGlobalPortraits(genderMan=True if self.__genderID == 0 else False)
+
 
 if __name__ == '__main__':
     mainApp = QtWidgets.QApplication(sys.argv)
