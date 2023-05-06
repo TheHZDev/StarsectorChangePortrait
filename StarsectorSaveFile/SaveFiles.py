@@ -8,7 +8,8 @@ import lxml.etree
 from .PersonUnit import *
 from .PortraitModUnit import portraitModUnit
 
-__all__ = ['saveFileManager', 'portraitModUnit', 'saveFileUnit']
+__all__ = ['saveFileManager', 'portraitModUnit', 'saveFileUnit', 'cache_PublicModPortraits',
+           'AIAdminPerson', 'NexAgentPerson']
 
 # 固定名称区
 const_campaignName = 'campaign.xml'
@@ -70,7 +71,7 @@ class saveFileUnit:
         self.__event_endAllSync = threading.Event()
         self.__event_saveDelay = threading.Event()
         # 变量存储区
-        self.__cache_hasPortraitsMod = []
+        self.__cache_hasPortraitsMod = ['core']
         self.__func_toSyncPerson = []  # 这个列表存储待执行的同步函数，然后后台定时调度
         self.__saveFileNode: lxml.etree._ElementTree = None
         self.__AIAdmin_persons: List[AIAdminPerson] = []

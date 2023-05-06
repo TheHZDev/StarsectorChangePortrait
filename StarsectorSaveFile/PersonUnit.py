@@ -20,21 +20,52 @@ class AIAdminPerson:
         """殖民地，A核行政官"""
         self.__delayFuncList = func_List
         self.__node = node
+        self.__flag_needUpdate = False
         # 数据
         self.__name: str = ' '.join((node.attrib['f'], node.attrib['l']))
         self.__portraitPath: str = node.attrib['spr']
         self.__location = GetLocationName(node.xpath('market')[0].attrib['ref'], node)
 
     def UpdateInfo(self):
-        self.__delayFuncList.append(self.__syncToXML)
+        if self.__flag_needUpdate:
+            self.__delayFuncList.append(self.__syncToXML)
 
     def __syncToXML(self):
+        self.__flag_needUpdate = False
         self.__node.attrib['l'] = ''
         self.__node.attrib['f'] = self.__name
         self.__node.attrib['spr'] = self.__portraitPath
 
+    @property
+    def Name(self):
+        return self.__name
+
+    @property
+    def PortraitPath(self):
+        return self.__portraitPath
+
+    @property
+    def Location(self):
+        return self.__location
+
+    @Name.setter
+    def Name(self, value):
+        if isinstance(value, str):
+            if len(value) == 0:
+                value = ' '
+            self.__name = value
+            self.__flag_needUpdate = True
+
+    @PortraitPath.setter
+    def PortraitPath(self, value):
+        if isinstance(value, str):
+            self.__portraitPath = value
+            self.__flag_needUpdate = True
+
 
 class NexAgentPerson:
+    const_Man = "MALE"  # 男
+    const_Woman = "FEMALE"  # 女
 
     def __init__(self, node: lxml.etree._Element, func_List: list):
         """势力争霸，特工"""
@@ -46,20 +77,86 @@ class NexAgentPerson:
         }
         self.__delayFuncList = func_List
         self.__node = node
+        self.__flag_needUpdate = False
         # 数据
         self.__name: str = ' '.join((node.attrib['f'], node.attrib['l']))
         self.__portraitPath: str = node.attrib['spr']
         self.__level = int(node.xpath('../level')[0].text)
-        self.__gender = node.attrib['g']
+        self.__gender: str = node.attrib['g']  # 性别，用MALE或者FEMALE取代
         self.__specialization = __const_specializations.get(  # 这项指的是特工的专长
             node.xpath('../specializations/exerelin.campaign.intel.agents.AgentIntel_-Specialization')[0].text.lower())
         self.__location = GetLocationName(node.xpath('../market')[0].attrib['ref'], node)
 
     def UpdateInfo(self):
-        self.__delayFuncList.append(self.__syncToXML)
+        if self.__flag_needUpdate:
+            self.__delayFuncList.append(self.__syncToXML)
 
     def __syncToXML(self):
+        self.__flag_needUpdate = False
         self.__node.attrib['l'] = ''
         self.__node.attrib['f'] = self.__name
         self.__node.attrib['spr'] = self.__portraitPath
         self.__node.attrib['g'] = self.__gender
+
+    @property
+    def Name(self):
+        return self.__name
+
+    @property
+    def PortraitPath(self):
+        return self.__portraitPath
+
+    @property
+    def Gender(self):
+        return self.__gender
+
+    @property
+    def Location(self):
+        return self.__location
+
+    @property
+    def Level(self):
+        return self.__level
+
+    @property
+    def Specialization(self):
+        return self.__specialization
+
+    @Name.setter
+    def Name(self, value):
+        if isinstance(value, str):
+            if len(value) == 0:
+                value = ' '
+            self.__name = value
+            self.__flag_needUpdate = True
+
+    @PortraitPath.setter
+    def PortraitPath(self, value):
+        if isinstance(value, str):
+            self.__portraitPath = value
+            self.__flag_needUpdate = True
+
+    @Gender.setter
+    def Gender(self, value):
+        if value in ('MALE', 'FEMALE'):
+            self.__gender = value
+            self.__flag_needUpdate = True
+
+    def TranslateGender(self, toTranslate: str) -> str:
+        """
+        将代码翻译为中文，或者反过来。
+
+        :param toTranslate: 需要转换的词。
+        :return: 转换后的词。
+        """
+        match toTranslate:
+            case self.const_Man:
+                return '男'
+            case self.const_Woman:
+                return '女'
+            case '男':
+                return self.const_Man
+            case '女':
+                return self.const_Woman
+            case _:
+                return ''

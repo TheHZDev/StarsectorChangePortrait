@@ -18,7 +18,6 @@ class portraitModUnit:
         self.__portraits_global_women: List[str] = []
         self.__portraits_player_men: List[str] = []  # 玩家派系特属头像
         self.__portraits_player_women: List[str] = []
-        self.__hasPortraits = True
         # 实际加载mod
         factionFolder = os.path.join(self.__modPath, 'data', 'world', 'factions')
         if os.path.isdir(factionFolder):
@@ -37,8 +36,6 @@ class portraitModUnit:
             # 精简化数据存储
             self.__portraits_global_men = list(set(self.__portraits_global_men))
             self.__portraits_global_women = list(set(self.__portraits_global_women))
-        else:
-            self.__hasPortraits = False
 
     def ListPlayerFactionPortraits(self, genderMan: bool = True, ignoreGender: bool = False) -> List[str]:
         """
@@ -96,7 +93,7 @@ class portraitModUnit:
 
     def IsIncludePortrait(self, portraitPath: str):
         """查询该mod是否包含该头像"""
-        if not self.__hasPortraits:
+        if not self.HasPortraits:
             return False
         return portraitPath in self.__portraits_global_women or portraitPath in self.__portraits_global_men
 
@@ -111,12 +108,12 @@ class portraitModUnit:
     @property
     def HasPortraits(self) -> bool:
         """是否包含头像内容"""
-        return self.__hasPortraits
+        return len(self.__portraits_global_women) + len(self.__portraits_global_men) > 0
 
     @property
     def HasPlayerFactionPortraits(self) -> bool:
         """如果不存在玩家势力的头像，则直接启用全局势力头像"""
-        return len(self.__portraits_player_men) + len(self.__portraits_player_women) == 0
+        return len(self.__portraits_player_men) + len(self.__portraits_player_women) > 0
 
     # 辅助参数区
     @staticmethod
